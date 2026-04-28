@@ -20,19 +20,55 @@ function fmtDate(d) {
 }
 
 class NewsletterRow extends Component {
+  @tracked pdfs = null;
+  @tracked loading = true;
+
   constructor(owner, args) {
     super(owner, args);
-    this.args.onInsert(this.args.topic);
+    this.fetchPdfs();
+  }
+
+  async fetchPdfs() {
+    try {
+      const res = await ajax(`/t/${this.args.topic.id}.json`);
+      const raw = res?.post_stream?.posts?.[0]?.cooked || "";
+      const uploads = res?.post_stream?.posts?.[0]?.uploads || [];
+
+      const pdfUrls = uploads
+        .filter(
+          (u) =>
+            u.url?.toLowerCase().endsWith(".pdf") ||
+            u.original_filename?.toLowerCase().endsWith(".pdf")
+        )
+        .map((u) => u.url);
+
+      if (pdfUrls.length === 0) {
+        const hrefMatch = raw.match(/href="([^"]*\.pdf[^"]*)"/i);
+        if (hrefMatch) {
+          pdfUrls.push(hrefMatch[1]);
+        }
+        const shortUrlMatch = raw.match(/upload:\/\/[a-zA-Z0-9]+\.pdf/i);
+        if (shortUrlMatch && pdfUrls.length === 0) {
+          pdfUrls.push(shortUrlMatch[0]);
+        }
+      }
+
+      this.pdfs = pdfUrls;
+    } catch (e) {
+      this.pdfs = [];
+    } finally {
+      this.loading = false;
+    }
   }
 
   <template>
     <div class="nla-row">
-      <div class="nla-row__date">{{@formattedDate}}</div>
+      <div class="nla-row__date">{{fmtDate @topic.created_at}}</div>
       <div class="nla-row__title">{{@topic.fancy_title}}</div>
-      {{#if @isLoading}}
+      {{#if this.loading}}
         <span class="nla-row__loading">Loading...</span>
-      {{else if @pdfs.length}}
-        {{#each @pdfs as |pdf|}}
+      {{else if this.pdfs.length}}
+        {{#each this.pdfs as |pdf|}}
           <a
             class="nla-row__download"
             href={{pdf}}
@@ -200,92 +236,33 @@ export default class NewsletterArchive extends Component {
   @service router;
   @service currentUser;
 
-  @tracked topics = [];
-  @tracked loading = true;
-  @tracked pdfMap = {};
-  @tracked loadingMap = {};
   @tracked showModal = false;
 
   get isNewsletterPage() {
-    const path = this.router.currentURL || "";
-    if (/\/c\/newsletters(\/|$)/.test(path)) return true;
-
     const outletArgs = this.args.outletArgs || {};
     const id = outletArgs.category?.id;
     const slug = outletArgs.category?.slug;
+    if (id === CATEGORY_ID || slug === CATEGORY_SLUG) return true;
 
-    return id === CATEGORY_ID || slug === CATEGORY_SLUG;
+    const path = this.router.currentURL || "";
+    return /\/c\/newsletters(\/|$)/.test(path);
   }
 
   get isAdmin() {
     return this.currentUser?.admin === true;
   }
 
-  constructor(owner, args) {
-    super(owner, args);
-    this.fetchTopics();
+  get topics() {
+    const outletArgs = this.args.outletArgs || {};
+    const allTopics =
+      outletArgs.model?.list?.topics ||
+      outletArgs.model?.topics ||
+      [];
+
+    return allTopics.filter(
+      (t) => !t.title?.toLowerCase().startsWith("about the ")
+    );
   }
-
-  async fetchTopics() {
-    if (!this.isNewsletterPage) {
-      this.loading = false;
-      return;
-    }
-
-    try {
-      const allTopics = [];
-      let page = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        const res = await ajax(`/c/${CATEGORY_SLUG}/${CATEGORY_ID}.json?page=${page}`);
-        const topics = res?.topic_list?.topics || [];
-        if (topics.length === 0) {
-          hasMore = false;
-        } else {
-          allTopics.push(...topics);
-          hasMore = res?.topic_list?.more_topics_url != null;
-          page++;
-        }
-      }
-
-      this.topics = allTopics.filter(
-        (t) => !t.title?.toLowerCase().startsWith("about the ")
-      );
-    } catch (e) {
-      this.topics = [];
-    } finally {
-      this.loading = false;
-    }
-  }
-
-  @action
-  async loadUploads(topic) {
-    const id = topic.id;
-    if (this.pdfMap[id] !== undefined || this.loadingMap[id]) return;
-    this.loadingMap = { ...this.loadingMap, [id]: true };
-    try {
-      const res = await ajax(`/t/${id}.json`);
-      const uploads = res?.post_stream?.posts?.[0]?.uploads || [];
-      this.pdfMap = {
-        ...this.pdfMap,
-        [id]: uploads
-          .filter(
-            (u) =>
-              u.url?.toLowerCase().endsWith(".pdf") ||
-              u.original_filename?.toLowerCase().endsWith(".pdf")
-          )
-          .map((u) => u.url),
-      };
-    } catch (e) {
-      this.pdfMap = { ...this.pdfMap, [id]: [] };
-    } finally {
-      this.loadingMap = { ...this.loadingMap, [id]: false };
-    }
-  }
-
-  isLoading(topic) { return !!this.loadingMap[topic.id]; }
-  pdfsFor(topic)   { return this.pdfMap[topic.id] || []; }
 
   @action openModal()  { this.showModal = true; }
   @action closeModal() { this.showModal = false; }
@@ -293,8 +270,7 @@ export default class NewsletterArchive extends Component {
   @action
   onCreated() {
     this.showModal = false;
-    this.loading = true;
-    this.fetchTopics();
+    window.location.reload();
   }
 
   <template>
@@ -314,20 +290,10 @@ export default class NewsletterArchive extends Component {
           {{/if}}
         </div>
 
-        {{#if this.loading}}
-          <div class="nla-loading-state">
-            <span class="nla-spin nla-spin--lg"></span>
-          </div>
-        {{else if this.topics.length}}
+        {{#if this.topics.length}}
           <div class="nla-list">
             {{#each this.topics as |topic|}}
-              <NewsletterRow
-                @topic={{topic}}
-                @onInsert={{this.loadUploads}}
-                @isLoading={{this.isLoading topic}}
-                @pdfs={{this.pdfsFor topic}}
-                @formattedDate={{fmtDate topic.created_at}}
-              />
+              <NewsletterRow @topic={{topic}} />
             {{/each}}
           </div>
         {{else}}
