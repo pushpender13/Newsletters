@@ -31,8 +31,9 @@ class NewsletterRow extends Component {
   async fetchPdfs() {
     try {
       const res = await ajax(`/t/${this.args.topic.id}.json`);
-      const raw = res?.post_stream?.posts?.[0]?.cooked || "";
-      const uploads = res?.post_stream?.posts?.[0]?.uploads || [];
+      const firstPost = res?.post_stream?.posts?.[0];
+      const uploads = firstPost?.uploads || [];
+      const cooked = firstPost?.cooked || "";
 
       const pdfUrls = uploads
         .filter(
@@ -43,14 +44,8 @@ class NewsletterRow extends Component {
         .map((u) => u.url);
 
       if (pdfUrls.length === 0) {
-        const hrefMatch = raw.match(/href="([^"]*\.pdf[^"]*)"/i);
-        if (hrefMatch) {
-          pdfUrls.push(hrefMatch[1]);
-        }
-        const shortUrlMatch = raw.match(/upload:\/\/[a-zA-Z0-9]+\.pdf/i);
-        if (shortUrlMatch && pdfUrls.length === 0) {
-          pdfUrls.push(shortUrlMatch[0]);
-        }
+        const hrefMatch = cooked.match(/href="([^"]*\.pdf[^"]*)"/i);
+        if (hrefMatch) pdfUrls.push(hrefMatch[1]);
       }
 
       this.pdfs = pdfUrls;
@@ -235,7 +230,10 @@ class CreateNewsletterModal extends Component {
 export default class NewsletterArchive extends Component {
   @service router;
   @service currentUser;
+  @service store;
 
+  @tracked topics = [];
+  @tracked loading = true;
   @tracked showModal = false;
 
   get isNewsletterPage() {
@@ -252,16 +250,46 @@ export default class NewsletterArchive extends Component {
     return this.currentUser?.admin === true;
   }
 
-  get topics() {
-    const outletArgs = this.args.outletArgs || {};
-    const allTopics =
-      outletArgs.model?.list?.topics ||
-      outletArgs.model?.topics ||
-      [];
+  constructor(owner, args) {
+    super(owner, args);
+    if (this.isNewsletterPage) {
+      this.fetchTopics();
+    } else {
+      this.loading = false;
+    }
+  }
 
-    return allTopics.filter(
-      (t) => !t.title?.toLowerCase().startsWith("about the ")
-    );
+  async fetchTopics() {
+    this.loading = true;
+    try {
+      const allTopics = [];
+      let page = 0;
+      let keepGoing = true;
+
+      while (keepGoing) {
+        const url = `/c/${CATEGORY_SLUG}/${CATEGORY_ID}/l/latest.json?page=${page}`;
+        const res = await ajax(url);
+        const batch = res?.topic_list?.topics || [];
+
+        if (batch.length === 0) {
+          keepGoing = false;
+        } else {
+          allTopics.push(...batch);
+          keepGoing = !!res?.topic_list?.more_topics_url;
+          page++;
+        }
+
+        if (page > 20) keepGoing = false;
+      }
+
+      this.topics = allTopics.filter(
+        (t) => !t.title?.toLowerCase().startsWith("about the ")
+      );
+    } catch (e) {
+      this.topics = [];
+    } finally {
+      this.loading = false;
+    }
   }
 
   @action openModal()  { this.showModal = true; }
@@ -290,7 +318,11 @@ export default class NewsletterArchive extends Component {
           {{/if}}
         </div>
 
-        {{#if this.topics.length}}
+        {{#if this.loading}}
+          <div class="nla-loading-state">
+            <span class="nla-spin nla-spin--lg"></span>
+          </div>
+        {{else if this.topics.length}}
           <div class="nla-list">
             {{#each this.topics as |topic|}}
               <NewsletterRow @topic={{topic}} />
