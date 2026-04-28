@@ -233,8 +233,25 @@ export default class NewsletterArchive extends Component {
     }
 
     try {
-      const res = await ajax(`/c/${CATEGORY_SLUG}/${CATEGORY_ID}.json`);
-      this.topics = res?.topic_list?.topics?.filter((t) => !t.pinned_globally && t.id !== res?.topic_list?.per_page) || res?.topic_list?.topics || [];
+      const allTopics = [];
+      let page = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const res = await ajax(`/c/${CATEGORY_SLUG}/${CATEGORY_ID}.json?page=${page}`);
+        const topics = res?.topic_list?.topics || [];
+        if (topics.length === 0) {
+          hasMore = false;
+        } else {
+          allTopics.push(...topics);
+          hasMore = res?.topic_list?.more_topics_url != null;
+          page++;
+        }
+      }
+
+      this.topics = allTopics.filter(
+        (t) => !t.title?.toLowerCase().startsWith("about the ")
+      );
     } catch (e) {
       this.topics = [];
     } finally {
