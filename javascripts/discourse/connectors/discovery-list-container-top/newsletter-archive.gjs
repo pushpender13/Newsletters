@@ -19,51 +19,36 @@ function fmtDate(d) {
   }).format(date);
 }
 
+function extractPdfs(topicJson) {
+  const firstPost = topicJson?.post_stream?.posts?.[0];
+  const uploads = firstPost?.uploads || [];
+  const cooked = firstPost?.cooked || "";
+
+  const pdfUrls = uploads
+    .filter(
+      (u) =>
+        u.url?.toLowerCase().endsWith(".pdf") ||
+        u.original_filename?.toLowerCase().endsWith(".pdf")
+    )
+    .map((u) => u.url);
+
+  if (pdfUrls.length === 0) {
+    const hrefMatch = cooked.match(/href="([^"]*\.pdf[^"]*)"/i);
+    if (hrefMatch) pdfUrls.push(hrefMatch[1]);
+  }
+
+  return pdfUrls;
+}
+
 class NewsletterRow extends Component {
-  @tracked pdfs = null;
-  @tracked loading = true;
-
-  constructor(owner, args) {
-    super(owner, args);
-    this.fetchPdfs();
-  }
-
-  async fetchPdfs() {
-    try {
-      const res = await ajax(`/t/${this.args.topic.id}.json`);
-      const firstPost = res?.post_stream?.posts?.[0];
-      const uploads = firstPost?.uploads || [];
-      const cooked = firstPost?.cooked || "";
-
-      const pdfUrls = uploads
-        .filter(
-          (u) =>
-            u.url?.toLowerCase().endsWith(".pdf") ||
-            u.original_filename?.toLowerCase().endsWith(".pdf")
-        )
-        .map((u) => u.url);
-
-      if (pdfUrls.length === 0) {
-        const hrefMatch = cooked.match(/href="([^"]*\.pdf[^"]*)"/i);
-        if (hrefMatch) pdfUrls.push(hrefMatch[1]);
-      }
-
-      this.pdfs = pdfUrls;
-    } catch (e) {
-      this.pdfs = [];
-    } finally {
-      this.loading = false;
-    }
-  }
-
   <template>
     <div class="nla-row">
-      <div class="nla-row__date">{{fmtDate @topic.created_at}}</div>
-      <div class="nla-row__title">{{@topic.fancy_title}}</div>
-      {{#if this.loading}}
+      <div class="nla-row__date">{{fmtDate @entry.topic.created_at}}</div>
+      <div class="nla-row__title">{{@entry.topic.fancy_title}}</div>
+      {{#if @entry.pdfLoading}}
         <span class="nla-row__loading">Loading...</span>
-      {{else if this.pdfs.length}}
-        {{#each this.pdfs as |pdf|}}
+      {{else if @entry.pdfs.length}}
+        {{#each @entry.pdfs as |pdf|}}
           <a
             class="nla-row__download"
             href={{pdf}}
@@ -230,9 +215,8 @@ class CreateNewsletterModal extends Component {
 export default class NewsletterArchive extends Component {
   @service router;
   @service currentUser;
-  @service store;
 
-  @tracked topics = [];
+  @tracked entries = [];
   @tracked loading = true;
   @tracked showModal = false;
 
@@ -282,13 +266,38 @@ export default class NewsletterArchive extends Component {
         if (page > 20) keepGoing = false;
       }
 
-      this.topics = allTopics.filter(
+      const filtered = allTopics.filter(
         (t) => !t.title?.toLowerCase().startsWith("about the ")
       );
+
+      this.entries = filtered.map((t) => ({
+        topic: t,
+        pdfs: [],
+        pdfLoading: true,
+      }));
     } catch (e) {
-      this.topics = [];
+      this.entries = [];
     } finally {
       this.loading = false;
+    }
+
+    this.fetchAllPdfs();
+  }
+
+  async fetchAllPdfs() {
+    for (let i = 0; i < this.entries.length; i++) {
+      const entry = this.entries[i];
+      let pdfs = [];
+      try {
+        const res = await ajax(`/t/${entry.topic.id}.json`);
+        pdfs = extractPdfs(res);
+      } catch (e) {
+        pdfs = [];
+      }
+
+      this.entries = this.entries.map((e, idx) =>
+        idx === i ? { ...e, pdfs, pdfLoading: false } : e
+      );
     }
   }
 
@@ -322,10 +331,10 @@ export default class NewsletterArchive extends Component {
           <div class="nla-loading-state">
             <span class="nla-spin nla-spin--lg"></span>
           </div>
-        {{else if this.topics.length}}
+        {{else if this.entries.length}}
           <div class="nla-list">
-            {{#each this.topics as |topic|}}
-              <NewsletterRow @topic={{topic}} />
+            {{#each this.entries as |entry|}}
+              <NewsletterRow @entry={{entry}} />
             {{/each}}
           </div>
         {{else}}
