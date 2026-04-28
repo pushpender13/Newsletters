@@ -1,0 +1,11 @@
+{
+  "name": "Newsletter Archive",
+  "about": "Displays a PDF newsletter archive on /c/newsletters/70. Admins can create newsletters with a title and PDF upload. All users can browse and directly download past editions.",
+  "version": "1.0.0",
+  "authors": "Your Forum Team",
+  "component": true,
+  "license_url": null,
+  "assets": [],
+  "color_schemes": [],
+  "screenshots": []
+}
