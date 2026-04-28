@@ -19,25 +19,54 @@ function fmtDate(d) {
   }).format(date);
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function extractPdfs(topicJson) {
   const firstPost = topicJson?.post_stream?.posts?.[0];
-  const uploads = firstPost?.uploads || [];
-  const cooked = firstPost?.cooked || "";
+  if (!firstPost) return [];
 
-  const pdfUrls = uploads
-    .filter(
-      (u) =>
-        u.url?.toLowerCase().endsWith(".pdf") ||
-        u.original_filename?.toLowerCase().endsWith(".pdf")
-    )
-    .map((u) => u.url);
+  const uploads = firstPost.uploads || [];
+  const cooked = firstPost.cooked || "";
+  const raw = firstPost.raw || "";
+  const linkCounts = firstPost.link_counts || [];
+  const found = new Set();
 
-  if (pdfUrls.length === 0) {
-    const hrefMatch = cooked.match(/href="([^"]*\.pdf[^"]*)"/i);
-    if (hrefMatch) pdfUrls.push(hrefMatch[1]);
+  uploads.forEach((u) => {
+    if (
+      u.url?.toLowerCase().endsWith(".pdf") ||
+      u.original_filename?.toLowerCase().endsWith(".pdf")
+    ) {
+      found.add(u.short_path || u.url);
+    }
+  });
+
+  linkCounts.forEach((lc) => {
+    if (lc.url?.toLowerCase().includes(".pdf")) {
+      found.add(lc.url);
+    }
+  });
+
+  const hrefPattern = /href="([^"]*\.pdf[^"]*)"/gi;
+  let match;
+  while ((match = hrefPattern.exec(cooked)) !== null) {
+    found.add(match[1]);
   }
 
-  return pdfUrls;
+  const aTagPattern = /href="(\/uploads\/[^"]+)"/gi;
+  while ((match = aTagPattern.exec(cooked)) !== null) {
+    found.add(match[1]);
+  }
+
+  if (found.size === 0) {
+    const uploadPattern = /upload:\/\/[a-zA-Z0-9_.]+/gi;
+    while ((match = uploadPattern.exec(raw)) !== null) {
+      found.add(match[0]);
+    }
+  }
+
+  return [...found];
 }
 
 class NewsletterRow extends Component {
@@ -286,6 +315,8 @@ export default class NewsletterArchive extends Component {
 
   async fetchAllPdfs() {
     for (let i = 0; i < this.entries.length; i++) {
+      if (i > 0) await delay(300);
+
       const entry = this.entries[i];
       let pdfs = [];
       try {
