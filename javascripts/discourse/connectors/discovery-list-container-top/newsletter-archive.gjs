@@ -154,11 +154,15 @@ class CreateNewsletterModal extends Component {
         contentType: false,
       });
       const shortUrl = up?.short_url;
+      const origName = up?.original_filename || this.pdfName;
+      const fileSize = up?.human_filesize || "";
       if (!shortUrl) throw new Error("Upload failed — no short_url returned.");
+
+      const raw = `[${origName}|attachment](${shortUrl})${fileSize ? ` (${fileSize})` : ""}`;
 
       await ajax("/posts.json", {
         type: "POST",
-        data: { title: this.title.trim(), raw: shortUrl, category: CATEGORY_ID },
+        data: { title: this.title.trim(), raw, category: CATEGORY_ID },
       });
 
       this.args.onCreated();
