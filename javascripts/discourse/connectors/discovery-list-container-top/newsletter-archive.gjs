@@ -5,6 +5,9 @@ import { service } from "@ember/service";
 import { on } from "@ember/modifier";
 import { ajax } from "discourse/lib/ajax";
 
+const CATEGORY_SLUG = "newsletters";
+const CATEGORY_ID = 70;
+
 function fmtDate(d) {
   if (!d) return "";
   const date = new Date(d);
@@ -110,7 +113,7 @@ class CreateNewsletterModal extends Component {
 
       await ajax("/posts.json", {
         type: "POST",
-        data: { title: this.title.trim(), raw: shortUrl, category: 70 },
+        data: { title: this.title.trim(), raw: shortUrl, category: CATEGORY_ID },
       });
 
       this.args.onCreated();
@@ -197,6 +200,8 @@ export default class NewsletterArchive extends Component {
   @service router;
   @service currentUser;
 
+  @tracked topics = [];
+  @tracked loading = true;
   @tracked pdfMap = {};
   @tracked loadingMap = {};
   @tracked showModal = false;
@@ -206,26 +211,35 @@ export default class NewsletterArchive extends Component {
     if (/\/c\/newsletters(\/|$)/.test(path)) return true;
 
     const outletArgs = this.args.outletArgs || {};
-    const id =
-      outletArgs.category?.id;
-    const slug =
-      outletArgs.category?.slug;
+    const id = outletArgs.category?.id;
+    const slug = outletArgs.category?.slug;
 
-    return id === 70 || slug === "newsletters";
+    return id === CATEGORY_ID || slug === CATEGORY_SLUG;
   }
 
   get isAdmin() {
     return this.currentUser?.admin === true;
   }
 
-  get topics() {
-    const outletArgs = this.args.outletArgs || {};
-    return (
-      outletArgs.model?.list?.topics ||
-      outletArgs.model?.topics ||
-      outletArgs.topics ||
-      []
-    );
+  constructor(owner, args) {
+    super(owner, args);
+    this.fetchTopics();
+  }
+
+  async fetchTopics() {
+    if (!this.isNewsletterPage) {
+      this.loading = false;
+      return;
+    }
+
+    try {
+      const res = await ajax(`/c/${CATEGORY_SLUG}/${CATEGORY_ID}.json`);
+      this.topics = res?.topic_list?.topics?.filter((t) => !t.pinned_globally && t.id !== res?.topic_list?.per_page) || res?.topic_list?.topics || [];
+    } catch (e) {
+      this.topics = [];
+    } finally {
+      this.loading = false;
+    }
   }
 
   @action
@@ -258,7 +272,13 @@ export default class NewsletterArchive extends Component {
 
   @action openModal()  { this.showModal = true; }
   @action closeModal() { this.showModal = false; }
-  @action onCreated()  { this.showModal = false; window.location.reload(); }
+
+  @action
+  onCreated() {
+    this.showModal = false;
+    this.loading = true;
+    this.fetchTopics();
+  }
 
   <template>
     {{#if this.isNewsletterPage}}
@@ -267,7 +287,7 @@ export default class NewsletterArchive extends Component {
         <div class="nla-header">
           <div class="nla-header__text">
             <h1 class="nla-header__title">Past Editions</h1>
-            <p class="nla-header__sub">Browse and download past issues of the Newsletter.</p>
+            <p class="nla-header__sub">Browse and download past issues of the MASH Newsletter.</p>
           </div>
           {{#if this.isAdmin}}
             <button class="nla-btn nla-btn--primary" type="button" {{on "click" this.openModal}}>
@@ -277,7 +297,11 @@ export default class NewsletterArchive extends Component {
           {{/if}}
         </div>
 
-        {{#if this.topics.length}}
+        {{#if this.loading}}
+          <div class="nla-loading-state">
+            <span class="nla-spin nla-spin--lg"></span>
+          </div>
+        {{else if this.topics.length}}
           <div class="nla-list">
             {{#each this.topics as |topic|}}
               <NewsletterRow

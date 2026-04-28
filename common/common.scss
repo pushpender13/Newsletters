@@ -1,5 +1,17 @@
 /* Newsletter Archive – Theme Component Styles */
 
+/* Hide default Discourse topic list and category header on newsletters category */
+body.category-newsletters .topic-list,
+body.category-newsletters .topic-list-bottom,
+body.category-newsletters table.topic-list,
+body.category-newsletters .footer-message,
+body.category-newsletters #list-area .show-more,
+body.category-newsletters .category-breadcrumb,
+body.category-newsletters .navigation-container,
+body.category-newsletters .list-controls {
+  display: none !important;
+}
+
 .nla-wrap {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #1a2e3b;
@@ -376,6 +388,14 @@
   line-height: 1.5;
 }
 
+/* Loading state */
+.nla-loading-state {
+  padding: 3rem 0;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid #d8e2e6;
+}
+
 /* Spinner */
 .nla-spin {
   display: inline-block;
@@ -392,6 +412,14 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.nla-spin--lg {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+  border-color: rgba(26, 110, 92, 0.2);
+  border-top-color: #1a6e5c;
 }
 
 /* Responsive */
