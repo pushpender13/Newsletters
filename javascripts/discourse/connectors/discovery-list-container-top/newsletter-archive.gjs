@@ -70,30 +70,57 @@ function extractPdfs(topicJson) {
 }
 
 class NewsletterRow extends Component {
+  @tracked deleting = false;
+
+  @action
+  async deleteTopic() {
+    if (this.deleting) return;
+    if (!confirm("Permanently delete this newsletter?")) return;
+    this.deleting = true;
+    try {
+      await ajax(`/t/${this.args.entry.topic.id}.json`, { type: "DELETE" });
+      this.args.onDeleted(this.args.entry.topic.id);
+    } catch (e) {
+      this.deleting = false;
+    }
+  }
+
   <template>
     <div class="nla-row">
       <div class="nla-row__date">{{fmtDate @entry.topic.created_at}}</div>
       <div class="nla-row__title">{{@entry.topic.fancy_title}}</div>
-      {{#if @entry.pdfLoading}}
-        <span class="nla-row__loading">Loading...</span>
-      {{else if @entry.pdfs.length}}
-        {{#each @entry.pdfs as |pdf|}}
-          <a
-            class="nla-row__download"
-            href={{pdf}}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
+      <div class="nla-row__actions">
+        {{#if @entry.pdfLoading}}
+          <span class="nla-row__loading">Loading...</span>
+        {{else if @entry.pdfs.length}}
+          {{#each @entry.pdfs as |pdf|}}
+            <a
+              class="nla-row__download"
+              href={{pdf}}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+            >
+              <svg class="nla-row__dl-icon" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1" y="1" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.4" fill="none"/>
+                <path d="M5 7h3V4h2v3h3l-4 4-4-4z" fill="currentColor"/>
+                <path d="M5 13h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              </svg>
+              Download PDF
+            </a>
+          {{/each}}
+        {{/if}}
+        {{#if @isAdmin}}
+          <button
+            class="nla-row__delete"
+            type="button"
+            disabled={{this.deleting}}
+            {{on "click" this.deleteTopic}}
           >
-            <svg class="nla-row__dl-icon" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="1" y="1" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.4" fill="none"/>
-              <path d="M5 7h3V4h2v3h3l-4 4-4-4z" fill="currentColor"/>
-              <path d="M5 13h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-            </svg>
-            Download PDF
-          </a>
-        {{/each}}
-      {{/if}}
+            {{if this.deleting "Deleting..." "Delete"}}
+          </button>
+        {{/if}}
+      </div>
     </div>
   </template>
 }
@@ -336,6 +363,11 @@ export default class NewsletterArchive extends Component {
     }
   }
 
+  @action
+  removeEntry(topicId) {
+    this.entries = this.entries.filter((e) => e.topic.id !== topicId);
+  }
+
   @action openModal()  { this.showModal = true; }
   @action closeModal() { this.showModal = false; }
 
@@ -369,7 +401,7 @@ export default class NewsletterArchive extends Component {
         {{else if this.entries.length}}
           <div class="nla-list">
             {{#each this.entries as |entry|}}
-              <NewsletterRow @entry={{entry}} />
+              <NewsletterRow @entry={{entry}} @isAdmin={{this.isAdmin}} @onDeleted={{this.removeEntry}} />
             {{/each}}
           </div>
         {{else}}
