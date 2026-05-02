@@ -383,7 +383,7 @@ export default class NewsletterArchive extends Component {
 
         <div class="nla-header">
           <div class="nla-header__text">
-            <h1 class="nla-header__title">Past Editions</h1>
+            <h1 class="nla-header__title">Newsletters</h1>
             <p class="nla-header__sub">Browse and download past issues of the MASH Newsletter.</p>
           </div>
           {{#if this.isAdmin}}
