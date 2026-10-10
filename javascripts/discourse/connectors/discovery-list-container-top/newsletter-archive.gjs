@@ -24,6 +24,21 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function fetchNewsletterPage(url) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await ajax(url);
+    } catch (error) {
+      const status = error?.jqXHR?.status ?? error?.status;
+      const transient =
+        status === undefined || status === 0 || status === 408 ||
+        status === 429 || status >= 500;
+      if (!transient || attempt === 2) throw error;
+      await delay(500 * (attempt + 1));
+    }
+  }
+}
+
 function extractPdfs(topicJson) {
   const firstPost = topicJson?.post_stream?.posts?.[0];
   if (!firstPost) return [];
@@ -307,7 +322,7 @@ export default class NewsletterArchive extends Component {
 
       while (keepGoing) {
         const url = `/c/${CATEGORY_SLUG}/${CATEGORY_ID}/l/latest.json?page=${page}`;
-        const res = await ajax(url);
+        const res = await fetchNewsletterPage(url);
         const batch = res?.topic_list?.topics || [];
 
         if (batch.length === 0) {
@@ -332,7 +347,7 @@ export default class NewsletterArchive extends Component {
       }));
     } catch (e) {
       this.entries = [];
-      this.loadError = "Unable to load newsletters. Please try again.";
+      this.loadError = "Newsletters are temporarily unavailable.";
     } finally {
       this.loading = false;
     }
@@ -397,9 +412,6 @@ export default class NewsletterArchive extends Component {
         {{else if this.loadError}}
           <div class="nla-empty" role="alert">
             <p>{{this.loadError}}</p>
-            <button class="nla-btn nla-btn--outline" type="button" {{on "click" this.fetchTopics}}>
-              Try again
-            </button>
           </div>
         {{else if this.entries.length}}
           <div class="nla-list">
