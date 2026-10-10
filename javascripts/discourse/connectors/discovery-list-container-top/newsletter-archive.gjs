@@ -3,6 +3,7 @@ import { tracked } from "@glimmer/tracking";
 import { action } from "@ember/object";
 import { service } from "@ember/service";
 import { on } from "@ember/modifier";
+import didInsert from "@ember/render-modifiers/modifiers/did-insert";
 import { ajax } from "discourse/lib/ajax";
 
 const CATEGORY_SLUG = "newsletters";
@@ -278,6 +279,7 @@ export default class NewsletterArchive extends Component {
 
   @tracked entries = [];
   @tracked loading = true;
+  @tracked loadError = "";
   @tracked showModal = false;
 
   get isNewsletterPage() {
@@ -294,17 +296,10 @@ export default class NewsletterArchive extends Component {
     return this.currentUser?.admin === true;
   }
 
-  constructor(owner, args) {
-    super(owner, args);
-    if (this.isNewsletterPage) {
-      this.fetchTopics();
-    } else {
-      this.loading = false;
-    }
-  }
-
+  @action
   async fetchTopics() {
     this.loading = true;
+    this.loadError = "";
     try {
       const allTopics = [];
       let page = 0;
@@ -337,6 +332,7 @@ export default class NewsletterArchive extends Component {
       }));
     } catch (e) {
       this.entries = [];
+      this.loadError = "Unable to load newsletters. Please try again.";
     } finally {
       this.loading = false;
     }
@@ -379,7 +375,7 @@ export default class NewsletterArchive extends Component {
 
   <template>
     {{#if this.isNewsletterPage}}
-      <div class="nla-wrap">
+      <div class="nla-wrap" {{didInsert this.fetchTopics}}>
 
         <div class="nla-header">
           <div class="nla-header__text">
@@ -397,6 +393,13 @@ export default class NewsletterArchive extends Component {
         {{#if this.loading}}
           <div class="nla-loading-state">
             <span class="nla-spin nla-spin--lg"></span>
+          </div>
+        {{else if this.loadError}}
+          <div class="nla-empty" role="alert">
+            <p>{{this.loadError}}</p>
+            <button class="nla-btn nla-btn--outline" type="button" {{on "click" this.fetchTopics}}>
+              Try again
+            </button>
           </div>
         {{else if this.entries.length}}
           <div class="nla-list">
